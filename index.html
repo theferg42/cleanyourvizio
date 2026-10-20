@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CleanYourVizio</title>
+<!--
+  Cast receiver for the CleanYourVizio home screen. It holds no data of its own: the sender on the
+  home network pushes tiles, focus and weather over the urn:x-cast:com.cleanyourvizio.home channel.
+-->
+<script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100;200;300;400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --glow: 90, 70, 200; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff;
+    font-family: Outfit, system-ui, sans-serif; cursor: none; }
+  #glow { position: absolute; inset: -20%; pointer-events: none;
+    background: radial-gradient(ellipse 45% 40% at 62% 72%, rgba(var(--glow), .55), transparent 70%);
+    transition: background 1.2s ease; }
+  #top { position: absolute; left: 7.3vw; top: 9vh; }
+  #greeting { font-weight: 300; font-size: 2.9vw; color: #c8c8cd; }
+  #clock { font-weight: 100; font-size: 13vw; line-height: 1; margin-left: -.4vw; letter-spacing: -.2vw; }
+  #date { font-weight: 300; font-size: 2.6vw; color: #dcdce1; margin-top: .6vh; }
+  #weather { position: absolute; right: 7.3vw; top: 10vh; text-align: right; }
+  #temp { font-weight: 200; font-size: 6vw; line-height: 1; }
+  #sky { font-weight: 400; font-size: 1.9vw; color: #e1e1e6; margin-top: .8vh; }
+  #hilo { font-weight: 300; font-size: 1.5vw; color: #a0a0a8; margin-top: .4vh; }
+  #name { position: absolute; left: 7.3vw; bottom: 30vh; font-weight: 300; font-size: 3.4vw;
+    text-shadow: 0 0 2.4vw rgba(var(--glow), .9); transition: opacity .25s; }
+  #band { position: absolute; left: 5.2vw; right: 5.2vw; bottom: 7vh; height: 20vh;
+    background: rgba(255,255,255,.06); border-radius: 2.2vw; }
+  #dock { position: absolute; left: 7.3vw; right: 7.3vw; bottom: 9.5vh; height: 15vh;
+    display: flex; gap: 1.6vw; }
+  .tile { flex: 1; border-radius: 1.2vw; overflow: hidden; position: relative;
+    background: #1b1c22 center / contain no-repeat; transition: transform .35s cubic-bezier(.2,.9,.3,1.2);
+    display: flex; align-items: center; justify-content: center; font-size: 1.8vw; font-weight: 400; }
+  .tile.focus { transform: scale(1.08); }
+  #hl { position: absolute; bottom: 9.5vh; height: 15vh; border-radius: 1.4vw; pointer-events: none;
+    background: rgba(255,255,255,.12); box-shadow: 0 0 0 .25vw rgba(255,255,255,.55), 0 1vw 3vw rgba(0,0,0,.6);
+    transition: left .45s cubic-bezier(.2,.9,.3,1.15), width .45s, transform .35s cubic-bezier(.2,.9,.3,1.2);
+    transform: scale(1.08); }
+  #hint { position: absolute; right: 7.3vw; bottom: 2.2vh; font-size: 1vw; color: #55555c; font-weight: 300; }
+</style>
+</head>
+<body>
+<div id="glow"></div>
+<div id="top">
+  <div id="greeting"></div>
+  <div id="clock"></div>
+  <div id="date"></div>
+</div>
+<div id="weather"><div id="temp"></div><div id="sky"></div><div id="hilo"></div></div>
+<div id="name"></div>
+<div id="band"></div>
+<div id="dock"></div>
+<div id="hl"></div>
+<div id="hint">Use your phone remote · Vizio Home button leaves</div>
+<script>
+const NS = 'urn:x-cast:com.cleanyourvizio.home';
+const $ = id => document.getElementById(id);
+let state = { tiles: [], focus: 0, weather: null };
+
+function tick() {
+  const now = new Date();
+  const h = now.getHours();
+  $('greeting').textContent = h >= 5 && h < 12 ? 'Good morning' : h >= 5 && h < 17 ? 'Good afternoon' : 'Good evening';
+  $('clock').textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/, '');
+  $('date').textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+}
+
+function drawTiles() {
+  const dock = $('dock');
+  dock.textContent = '';
+  state.tiles.forEach((t, i) => {
+    const d = document.createElement('div');
+    d.className = 'tile' + (i === state.focus ? ' focus' : '');
+    if (t.icon) d.style.backgroundImage = `url("${encodeURI(t.icon)}")`;
+    else d.textContent = t.label;
+    dock.appendChild(d);
+  });
+  drawFocus();
+}
+
+function drawFocus() {
+  const tiles = $('dock').children;
+  [...tiles].forEach((el, i) => el.classList.toggle('focus', i === state.focus));
+  const el = tiles[state.focus];
+  if (!el) return;
+  const hl = $('hl');
+  hl.style.left = el.offsetLeft + $('dock').offsetLeft + 'px';
+  hl.style.width = el.offsetWidth + 'px';
+  const t = state.tiles[state.focus];
+  $('name').textContent = t.label;
+  if (Array.isArray(t.glow) && t.glow.length === 3)
+    document.documentElement.style.setProperty('--glow', t.glow.map(n => Math.max(0, Math.min(255, n | 0))).join(','));
+}
+
+function drawWeather() {
+  const w = state.weather;
+  $('weather').style.visibility = w ? 'visible' : 'hidden';
+  if (!w) return;
+  $('temp').textContent = `${w.temp}°`;
+  $('sky').textContent = w.sky;
+  $('hilo').textContent = `H ${w.hi}°  L ${w.lo}°  ·  ${w.place}`;
+}
+
+function onMessage(event) {
+  const msg = typeof event.data === 'string' ? JSON.parse(event.data) : event.data;
+  if (msg.type === 'state') {
+    const tilesChanged = JSON.stringify(msg.tiles) !== JSON.stringify(state.tiles);
+    state = { ...state, ...msg };
+    if (tilesChanged) drawTiles(); else drawFocus();
+    drawWeather();
+  } else if (msg.type === 'focus') {
+    state.focus = msg.focus;
+    drawFocus();
+  }
+}
+
+tick();
+setInterval(tick, 1000);
+drawWeather();
+
+const ctx = cast.framework.CastReceiverContext.getInstance();
+ctx.addCustomMessageListener(NS, onMessage);
+const opts = new cast.framework.CastReceiverOptions();
+opts.disableIdleTimeout = true;
+opts.skipPlayersLoad = true;
+opts.customNamespaces = { [NS]: cast.framework.system.MessageType.JSON };
+ctx.start(opts);
+</script>
+</body>
+</html>
