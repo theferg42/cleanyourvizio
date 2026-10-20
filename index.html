@@ -85,7 +85,7 @@
   .score .meta { display: flex; justify-content: space-between; gap: 1vw; margin-top: .8vh; font-size: 1.05vw; color: #a8a8b0; }
   .cal .head { font-size: 1.05vw; color: #a8a8b0; letter-spacing: .08vw; margin-bottom: .6vh; }
   #cal { width: 100%; }
-  .cal .ev { display: grid; grid-template-columns: 8.4vw 1fr; gap: 1vw; align-items: baseline; font-size: 1.45vw; font-weight: 300; }
+  .cal .ev { display: grid; grid-template-columns: max-content 1fr; gap: 1vw; align-items: baseline; font-size: 1.45vw; font-weight: 300; }
   .cal .ev + .ev { margin-top: .5vh; }
   .cal .when { font-size: 1.1vw; color: #c9c9d0; }
   .cal .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -119,6 +119,23 @@
   body.ambient #dock, body.ambient #band { transform: translateY(4vh); }
   body.ambient #caption { bottom: 7vh; }
   body.ambient #glow { opacity: 0; }
+  /* NWS alert banner: top centre, red for warnings, amber for watches, grey for advisories. */
+  #alerts { position: absolute; top: 3vh; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column;
+    align-items: center; gap: .8vh; }
+  .alert { display: flex; align-items: center; gap: .8vw; padding: .7vw 1.5vw; border-radius: 3vw; font-size: 1.35vw;
+    font-weight: 400; background: rgba(40,40,48,.85); border: 1px solid rgba(255,255,255,.12); white-space: nowrap;
+    box-shadow: 0 .5vw 2vw rgba(0,0,0,.5); }
+  .alert.warning { background: rgba(170,20,28,.9); border-color: rgba(255,120,120,.5); }
+  .alert.watch { background: rgba(170,105,10,.9); border-color: rgba(255,200,110,.5); }
+  .alert.warning::before { content: ''; width: .7vw; height: .7vw; border-radius: 50%; background: #fff;
+    animation: pulse 1.6s ease-in-out infinite; }
+  .alert .until { font-weight: 300; opacity: .85; font-size: 1.15vw; }
+  #aqi { display: inline-block; margin-left: .6vw; }
+  #aqi::before { content: ''; display: inline-block; width: .6vw; height: .6vw; border-radius: 50%; margin-right: .35vw;
+    background: var(--aqi, #4caf50); vertical-align: .05vw; }
+  #suntime { font-weight: 300; font-size: 1.15vw; color: #c8c8d0; margin-top: .4vh; }
+  /* Burn-in care: the clock and side panel shift a few pixels every 10 minutes. */
+  #top, #right { transition: transform 8s ease; }
   #night { position: absolute; inset: 0; background: #000; opacity: var(--night); pointer-events: none;
   }
   body.settled #night { transition: opacity 60s linear; }
@@ -139,10 +156,11 @@
     <div id="recent"></div>
   </div>
   <div id="right">
-    <div id="weather"><div id="temp"></div><div id="sky-text"></div><div id="hilo"></div></div>
+    <div id="weather"><div id="temp"></div><div id="sky-text"></div><div id="hilo"></div><div id="suntime"></div></div>
     <div id="scores"></div>
     <div id="cal"></div>
   </div>
+  <div id="alerts"></div>
   <div id="caption"><div class="t"></div><div class="b"></div><div class="c"></div></div>
   <div id="name"></div>
   <div id="band"></div>
@@ -181,6 +199,8 @@ function tick() {
   $('clock').textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/, '');
   $('date').textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
   drawSky(now);
+  drawSunTime(now);
+  drift(now);
 }
 
 // Sky tint from real sunrise/sunset: warm around both, clear by day, deep blue at night, dim after 11 PM.
@@ -197,7 +217,7 @@ function drawSky(now) {
   root.setProperty('--sky', tint.join(','));
   root.setProperty('--sky-a', a);
   const h = now.getHours();
-  root.setProperty('--night', h >= 23 || h < 6 ? .45 : 0);
+  root.setProperty('--night', h >= 1 && h < 5 ? .85 : h >= 23 || h < 6 ? .45 : 0);
 }
 
 function drawTiles() {
@@ -233,6 +253,13 @@ function drawWeather() {
   $('temp').textContent = `${w.temp}°`;
   $('sky-text').textContent = w.sky;
   $('hilo').textContent = `H ${w.hi}°  L ${w.lo}°  ·  ${w.place}`;
+  if (state.aqi != null) {
+    const a = state.aqi, chip = el('span', '', `AQI ${a}`);
+    chip.id = 'aqi';
+    // EPA bands: good, moderate, unhealthy for sensitive groups, unhealthy, very unhealthy, hazardous.
+    chip.style.setProperty('--aqi', a <= 50 ? '#4caf50' : a <= 100 ? '#f2c94c' : a <= 150 ? '#f2994a' : a <= 200 ? '#eb5757' : a <= 300 ? '#9b51e0' : '#7e0023');
+    $('hilo').appendChild(chip);
+  }
 }
 
 function drawScores() {
@@ -328,6 +355,42 @@ function drawFx() {
   if (kind === 'fog') clouds(5, .22);
 }
 
+function drawAlerts() {
+  const box = $('alerts');
+  const key = JSON.stringify(state.alerts || []);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.textContent = '';
+  (state.alerts || []).forEach(a => {
+    const d = el('div', 'alert ' + (['warning', 'watch', 'advisory'].includes(a.level) ? a.level : 'advisory'));
+    d.appendChild(el('span', '', a.event));
+    if (a.until) d.appendChild(el('span', 'until', a.until));
+    box.appendChild(d);
+  });
+}
+
+// "Sunset 6:42 PM · in 1h 12m" in the three hours before sunset or sunrise.
+function drawSunTime(now) {
+  const s = state.sun, box = $('suntime');
+  if (!s) { box.textContent = ''; return; }
+  const fmt = d => d.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' });
+  const left = ms => { const m = Math.round(ms / 60e3); return m >= 60 ? `${Math.floor(m / 60)}h ${m % 60}m` : `${m}m`; };
+  let text = '';
+  for (const [name, iso] of [['Sunrise', s.sunrise], ['Sunset', s.sunset]]) {
+    const t = new Date(iso), ms = t - now;
+    if (ms > 0 && ms < 3 * 3600e3) text = `${name} ${fmt(t)} · in ${left(ms)}`;
+  }
+  box.textContent = text;
+}
+
+// Shift the static text a few pixels every 10 minutes so no pixel holds the same bright edge for hours.
+function drift(now) {
+  const step = Math.floor(now.getTime() / 600e3);
+  const x = ((step * 7) % 9 - 4) * .12, y = ((step * 5) % 7 - 3) * .12;
+  $('top').style.transform = `translate(${x}vw, ${y}vh)`;
+  $('right').style.transform = `translate(${-x}vw, ${y}vh)`;
+}
+
 function drawRecent() {
   const r = state.recent || [];
   const box = $('recent');
@@ -372,7 +435,7 @@ function onMessage(event) {
     const tilesChanged = JSON.stringify(msg.tiles) !== JSON.stringify(state.tiles);
     state = { ...state, ...msg };
     if (tilesChanged) drawTiles(); else drawFocus();
-    drawWeather(); drawScores(); drawCalendar(); drawFx(); drawRecent(); tick();
+    drawWeather(); drawScores(); drawCalendar(); drawAlerts(); drawFx(); drawRecent(); tick();
     setTimeout(() => document.body.classList.add('settled'), 100);
   } else if (msg.type === 'focus') {
     state.focus = msg.focus;
