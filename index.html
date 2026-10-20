@@ -27,13 +27,31 @@
   @keyframes drift { from { transform: scale(1.02) translate(0, 0); }
                      to { transform: scale(1.12) translate(var(--dx, -2%), var(--dy, -1%)); } }
 
+  /* Weather over the art: rain, snow, storm flashes, drifting cloud or fog. Transform/opacity only. */
+  #fx { position: absolute; inset: 0; overflow: hidden; pointer-events: none; }
+  .drop { position: absolute; top: -12vh; width: .12vw; height: 9vh; border-radius: .1vw;
+    background: linear-gradient(rgba(220,230,255,0), rgba(220,230,255,.45));
+    animation: fall linear infinite; will-change: transform; }
+  @keyframes fall { to { transform: translate(-6vw, 125vh) rotate(8deg); } }
+  .flake { position: absolute; top: -3vh; border-radius: 50%; background: rgba(255,255,255,.85);
+    animation: snow linear infinite; will-change: transform; }
+  @keyframes snow { 33% { transform: translate(1.5vw, 35vh); } 66% { transform: translate(-1vw, 70vh); }
+                    to { transform: translate(1vw, 108vh); } }
+  .cloud { position: absolute; width: 70vw; height: 45vh; border-radius: 50%;
+    background: radial-gradient(ellipse at center, rgba(235,238,245,var(--a,.16)), rgba(235,238,245,0) 65%);
+    animation: drift-x linear infinite; will-change: transform; }
+  @keyframes drift-x { from { transform: translateX(-75vw); } to { transform: translateX(110vw); } }
+  .flash { position: absolute; inset: 0; background: #dfe6ff; opacity: 0; animation: flash 11s infinite; }
+  @keyframes flash { 0%, 91%, 93.5%, 95%, 100% { opacity: 0; } 92% { opacity: .22; } 94.2% { opacity: .14; } }
+
   #sky { position: absolute; inset: 0; background: rgba(var(--sky), var(--sky-a)); }
   /* Slow sky and night fades only after the first state has landed, so a fresh launch is not dark for a minute. */
   body.settled #sky { transition: background 60s linear; }
   #scrim { position: absolute; inset: 0;
     background: linear-gradient(90deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.18) 30%, rgba(0,0,0,0) 48%),
                 linear-gradient(0deg, rgba(0,0,0,.7) 0%, rgba(0,0,0,.2) 26%, rgba(0,0,0,0) 40%),
-                linear-gradient(180deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,0) 20%);
+                linear-gradient(180deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,0) 20%),
+                radial-gradient(ellipse 30% 30% at 92% 12%, rgba(0,0,0,.5), rgba(0,0,0,0) 100%);
     transition: opacity 2s ease; }
   #glow { position: absolute; inset: -20%; pointer-events: none; opacity: .55; transition: opacity 1.2s ease;
     background: radial-gradient(ellipse 40% 30% at 30% 92%, rgba(var(--glow), .7), transparent 70%);
@@ -49,7 +67,7 @@
 
   #right { position: absolute; right: 6.5vw; top: 7.5vh; width: 24vw; display: flex; flex-direction: column;
     align-items: flex-end; gap: 1.6vh; }
-  #weather { text-align: right; text-shadow: 0 .2vw 1.5vw rgba(0,0,0,.5); }
+  #weather { text-align: right; text-shadow: 0 .1vw .4vw rgba(0,0,0,.6), 0 .2vw 1.5vw rgba(0,0,0,.5); }
   #temp { font-weight: 200; font-size: 5.2vw; line-height: 1; }
   #sky-text { font-weight: 400; font-size: 1.6vw; color: #e8e8ec; margin-top: .6vh; }
   #hilo { font-weight: 300; font-size: 1.25vw; color: #b4b4bc; margin-top: .2vh; }
@@ -65,6 +83,12 @@
   .score .ours .abbr, .score .ours .pts { font-weight: 500; }
   .score .pts { font-variant-numeric: tabular-nums; }
   .score .meta { display: flex; justify-content: space-between; gap: 1vw; margin-top: .8vh; font-size: 1.05vw; color: #a8a8b0; }
+  .cal .head { font-size: 1.05vw; color: #a8a8b0; letter-spacing: .08vw; margin-bottom: .6vh; }
+  #cal { width: 100%; }
+  .cal .ev { display: grid; grid-template-columns: 8.4vw 1fr; gap: 1vw; align-items: baseline; font-size: 1.45vw; font-weight: 300; }
+  .cal .ev + .ev { margin-top: .5vh; }
+  .cal .when { font-size: 1.1vw; color: #c9c9d0; }
+  .cal .what { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .live { color: #ff5a5a; font-weight: 500; letter-spacing: .08vw; }
   .live::before { content: ''; display: inline-block; width: .55vw; height: .55vw; border-radius: 50%;
     background: #ff3b3b; margin-right: .45vw; vertical-align: .1vw; animation: pulse 1.6s ease-in-out infinite; }
@@ -103,6 +127,7 @@
 <body>
 <div class="slide" id="s0"><div class="img"></div></div>
 <div class="slide" id="s1"><div class="img"></div></div>
+<div id="fx"></div>
 <div id="sky"></div>
 <div id="scrim"></div>
 <div id="glow"></div>
@@ -116,6 +141,7 @@
   <div id="right">
     <div id="weather"><div id="temp"></div><div id="sky-text"></div><div id="hilo"></div></div>
     <div id="scores"></div>
+    <div id="cal"></div>
   </div>
   <div id="caption"><div class="t"></div><div class="b"></div><div class="c"></div></div>
   <div id="name"></div>
@@ -179,7 +205,8 @@ function drawTiles() {
   dock.textContent = '';
   state.tiles.forEach((t, i) => {
     const d = el('div', 'tile' + (i === state.focus ? ' focus' : ''));
-    if (t.icon) d.style.backgroundImage = `url("${encodeURI(t.icon)}")`;
+    // Icons are square-ish: show them whole, on their own edge colour so the tile reads as one piece.
+    if (t.icon) d.style.background = `${/^#[0-9a-f]{6}$/i.test(t.bg || '') ? t.bg : '#1b1c22'} url("${encodeURI(t.icon)}") center / contain no-repeat`;
     else d.textContent = t.label;
     dock.appendChild(d);
   });
@@ -231,6 +258,76 @@ function drawScores() {
   });
 }
 
+function drawCalendar() {
+  const box = $('cal');
+  const key = JSON.stringify(state.calendar || []);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.textContent = '';
+  if (!(state.calendar || []).length) return;
+  const card = el('div', 'card cal');
+  card.appendChild(el('div', 'head', 'NEXT UP'));
+  state.calendar.forEach(e => {
+    const row = el('div', 'ev');
+    row.appendChild(el('span', 'when', e.when));
+    row.appendChild(el('span', 'what', e.title));
+    card.appendChild(row);
+  });
+  box.appendChild(card);
+}
+
+// Open-Meteo weather codes -> an effect. Counts stay low for the TV's chip.
+function weatherKind(code) {
+  if (code == null) return '';
+  if (code >= 95) return 'storm';
+  if ((code >= 71 && code <= 77) || code === 85 || code === 86) return 'snow';
+  if ((code >= 51 && code <= 67) || (code >= 80 && code <= 82)) return code === 65 || code === 82 ? 'heavy' : 'rain';
+  if (code === 45 || code === 48) return 'fog';
+  if (code === 2 || code === 3) return 'cloud';
+  return '';
+}
+
+function drawFx() {
+  const kind = weatherKind(state.weather && state.weather.code);
+  const fx = $('fx');
+  if (fx.dataset.kind === kind) return;
+  fx.dataset.kind = kind;
+  fx.textContent = '';
+  const r = (a, b) => a + Math.random() * (b - a);
+  const rain = n => { for (let i = 0; i < n; i++) {
+    const d = el('div', 'drop');
+    d.style.left = r(0, 112) + 'vw';
+    d.style.animationDuration = r(.7, 1.1) + 's';
+    d.style.animationDelay = -r(0, 1.1) + 's';
+    d.style.opacity = r(.4, 1);
+    fx.appendChild(d);
+  } };
+  const clouds = (n, a) => { for (let i = 0; i < n; i++) {
+    const c = el('div', 'cloud');
+    c.style.top = r(-15, kind === 'fog' ? 70 : 35) + 'vh';
+    c.style.setProperty('--a', a);
+    const dur = r(140, 220);
+    c.style.animationDuration = dur + 's';
+    c.style.animationDelay = -r(0, dur) + 's';
+    fx.appendChild(c);
+  } };
+  if (kind === 'rain') rain(40);
+  if (kind === 'heavy') rain(70);
+  if (kind === 'storm') { rain(60); fx.appendChild(el('div', 'flash')); }
+  if (kind === 'snow') for (let i = 0; i < 45; i++) {
+    const f = el('div', 'flake'), size = r(.25, .7);
+    f.style.width = f.style.height = size + 'vw';
+    f.style.left = r(0, 100) + 'vw';
+    f.style.opacity = r(.4, .9);
+    const dur = r(9, 16);
+    f.style.animationDuration = dur + 's';
+    f.style.animationDelay = -r(0, dur) + 's';
+    fx.appendChild(f);
+  }
+  if (kind === 'cloud') clouds(3, .14);
+  if (kind === 'fog') clouds(5, .22);
+}
+
 function drawRecent() {
   const r = state.recent || [];
   const box = $('recent');
@@ -275,7 +372,7 @@ function onMessage(event) {
     const tilesChanged = JSON.stringify(msg.tiles) !== JSON.stringify(state.tiles);
     state = { ...state, ...msg };
     if (tilesChanged) drawTiles(); else drawFocus();
-    drawWeather(); drawScores(); drawRecent(); tick();
+    drawWeather(); drawScores(); drawCalendar(); drawFx(); drawRecent(); tick();
     setTimeout(() => document.body.classList.add('settled'), 100);
   } else if (msg.type === 'focus') {
     state.focus = msg.focus;
