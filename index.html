@@ -27,14 +27,17 @@
   @keyframes drift { from { transform: scale(1.02) translate(0, 0); }
                      to { transform: scale(1.12) translate(var(--dx, -2%), var(--dy, -1%)); } }
 
-  #sky { position: absolute; inset: 0; background: rgba(var(--sky), var(--sky-a)); transition: background 60s linear; }
+  #sky { position: absolute; inset: 0; background: rgba(var(--sky), var(--sky-a)); }
+  /* Slow sky and night fades only after the first state has landed, so a fresh launch is not dark for a minute. */
+  body.settled #sky { transition: background 60s linear; }
   #scrim { position: absolute; inset: 0;
-    background: linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.35) 38%, rgba(0,0,0,0) 60%),
-                linear-gradient(0deg, rgba(0,0,0,.85) 0%, rgba(0,0,0,.35) 32%, rgba(0,0,0,0) 50%),
-                linear-gradient(180deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,0) 22%); }
-  #glow { position: absolute; inset: -20%; pointer-events: none; opacity: .55;
+    background: linear-gradient(90deg, rgba(0,0,0,.55) 0%, rgba(0,0,0,.18) 30%, rgba(0,0,0,0) 48%),
+                linear-gradient(0deg, rgba(0,0,0,.7) 0%, rgba(0,0,0,.2) 26%, rgba(0,0,0,0) 40%),
+                linear-gradient(180deg, rgba(0,0,0,.3) 0%, rgba(0,0,0,0) 20%);
+    transition: opacity 2s ease; }
+  #glow { position: absolute; inset: -20%; pointer-events: none; opacity: .55; transition: opacity 1.2s ease;
     background: radial-gradient(ellipse 40% 30% at 30% 92%, rgba(var(--glow), .7), transparent 70%);
-    transition: background 1.2s ease; }
+    }
 
   #ui { position: absolute; inset: 0; }
   #top { position: absolute; left: 6.5vw; top: 7.5vh; text-shadow: 0 .2vw 1.5vw rgba(0,0,0,.5); }
@@ -54,13 +57,14 @@
     border: 1px solid rgba(255,255,255,.09); border-radius: 1.2vw; padding: 1.2vw 1.4vw;
     opacity: 0; transform: translateY(1vh); animation: rise .6s ease forwards; }
   @keyframes rise { to { opacity: 1; transform: none; } }
+  #scores { width: 100%; display: flex; flex-direction: column; gap: 1.6vh; }
   .score .row { display: flex; align-items: center; gap: .9vw; font-size: 1.7vw; font-weight: 300; }
   .score .row + .row { margin-top: .6vh; }
   .score img { width: 2.2vw; height: 2.2vw; object-fit: contain; }
   .score .abbr { flex: 1; }
   .score .ours .abbr, .score .ours .pts { font-weight: 500; }
   .score .pts { font-variant-numeric: tabular-nums; }
-  .score .meta { display: flex; justify-content: space-between; margin-top: .8vh; font-size: 1.05vw; color: #a8a8b0; }
+  .score .meta { display: flex; justify-content: space-between; gap: 1vw; margin-top: .8vh; font-size: 1.05vw; color: #a8a8b0; }
   .live { color: #ff5a5a; font-weight: 500; letter-spacing: .08vw; }
   .live::before { content: ''; display: inline-block; width: .55vw; height: .55vw; border-radius: 50%;
     background: #ff3b3b; margin-right: .45vw; vertical-align: .1vw; animation: pulse 1.6s ease-in-out infinite; }
@@ -78,15 +82,22 @@
     background: rgba(18,18,24,.55); border: 1px solid rgba(255,255,255,.07); border-radius: 2vw; }
   #dock { position: absolute; left: 6.5vw; right: 6.5vw; bottom: 8.5vh; height: 14vh; display: flex; gap: 1.4vw; }
   .tile { flex: 1; border-radius: 1.1vw; overflow: hidden; position: relative;
-    background: #1b1c22 center / contain no-repeat; transition: transform .35s cubic-bezier(.2,.9,.3,1.2);
+    background: linear-gradient(160deg, #2c2d38, #15151b) center / cover no-repeat; transition: transform .35s cubic-bezier(.2,.9,.3,1.2);
     display: flex; align-items: center; justify-content: center; font-size: 1.6vw; font-weight: 400;
     box-shadow: 0 .6vw 1.6vw rgba(0,0,0,.45); }
   .tile.focus { transform: scale(1.08); }
   #hl { position: absolute; bottom: 8.5vh; height: 14vh; border-radius: 1.3vw; pointer-events: none;
     background: rgba(255,255,255,.1); box-shadow: 0 0 0 .22vw rgba(255,255,255,.6), 0 1vw 3vw rgba(0,0,0,.6);
-    transition: left .45s cubic-bezier(.2,.9,.3,1.15), width .45s; transform: scale(1.08); }
+    transition: left .45s cubic-bezier(.2,.9,.3,1.15), width .45s, opacity 1.2s ease; transform: scale(1.08); }
+  #name, #band, #dock { transition: opacity 1.2s ease, transform 1.2s ease; }
+  #caption { transition: opacity 1.5s ease, bottom 1.2s ease; }
+  body.ambient #name, body.ambient #band, body.ambient #dock, body.ambient #hl { opacity: 0; }
+  body.ambient #dock, body.ambient #band { transform: translateY(4vh); }
+  body.ambient #caption { bottom: 7vh; }
+  body.ambient #glow { opacity: 0; }
   #night { position: absolute; inset: 0; background: #000; opacity: var(--night); pointer-events: none;
-    transition: opacity 60s linear; }
+  }
+  body.settled #night { transition: opacity 60s linear; }
 </style>
 </head>
 <body>
@@ -119,6 +130,15 @@ const $ = id => document.getElementById(id);
 const root = document.documentElement.style;
 let state = { tiles: [], focus: 0, weather: null, scores: [], recent: [], sun: null };
 let front = 0;
+let ambientTimer = 0;
+const AMBIENT_AFTER = 45e3;
+
+// Any remote input brings the dock back; it hides again after AMBIENT_AFTER of quiet.
+function wake() {
+  document.body.classList.remove('ambient');
+  clearTimeout(ambientTimer);
+  ambientTimer = setTimeout(() => document.body.classList.add('ambient'), AMBIENT_AFTER);
+}
 const photoParts = {};
 
 function el(tag, cls, text) {
@@ -256,9 +276,13 @@ function onMessage(event) {
     state = { ...state, ...msg };
     if (tilesChanged) drawTiles(); else drawFocus();
     drawWeather(); drawScores(); drawRecent(); tick();
+    setTimeout(() => document.body.classList.add('settled'), 100);
   } else if (msg.type === 'focus') {
     state.focus = msg.focus;
     drawFocus();
+    wake();
+  } else if (msg.type === 'wake') {
+    wake();
   } else if (msg.type === 'art' && /^https:\/\//.test(msg.src)) {
     showArt(msg.src, msg);
   } else if (msg.type === 'photo') {
@@ -275,6 +299,7 @@ function onMessage(event) {
 tick();
 setInterval(tick, 1000);
 drawWeather();
+wake();
 
 const ctx = cast.framework.CastReceiverContext.getInstance();
 ctx.addCustomMessageListener(NS, onMessage);
