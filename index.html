@@ -136,6 +136,20 @@
   #suntime { font-weight: 300; font-size: 1.15vw; color: #c8c8d0; margin-top: .4vh; }
   /* Burn-in care: the clock and side panel shift a few pixels every 10 minutes. */
   #top, #right { transition: transform 8s ease; }
+  /* Now playing (Apple Music via Last.fm): replaces the "Jump back in" row while a song plays. */
+  #music { display: none; align-items: center; gap: 1.2vw; margin-top: 2vh; padding: .9vw 1.6vw .9vw .9vw;
+    background: rgba(18,18,24,.62); border: 1px solid rgba(255,255,255,.1); border-radius: 1.2vw; max-width: 34vw; }
+  #music.on { display: inline-flex; animation: rise .6s ease forwards; }
+  #music img { width: 5.2vw; height: 5.2vw; border-radius: .6vw; object-fit: cover; background: #222; flex: none; }
+  #music .t { font-size: 1.5vw; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #music .a { font-size: 1.15vw; font-weight: 300; color: #c4c4cc; margin-top: .2vh; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  #music .np { display: flex; align-items: flex-end; gap: .18vw; height: 1vw; margin-bottom: .5vh; font-size: .85vw;
+    color: #fc5c7d; letter-spacing: .08vw; }
+  #music .np i { width: .22vw; height: 100%; background: #fc5c7d; transform-origin: bottom; animation: eq 1s ease-in-out infinite; }
+  #music .np i:nth-child(2) { animation-delay: -.3s; } #music .np i:nth-child(3) { animation-delay: -.6s; }
+  #music .np span { margin-left: .5vw; }
+  #music .txt { min-width: 0; }
+  @keyframes eq { 0%, 100% { transform: scaleY(.3); } 50% { transform: scaleY(1); } }
   #night { position: absolute; inset: 0; background: #000; opacity: var(--night); pointer-events: none;
   }
   body.settled #night { transition: opacity 60s linear; }
@@ -154,6 +168,8 @@
     <div id="clock"></div>
     <div id="date"></div>
     <div id="recent"></div>
+    <div id="music"><img alt=""><div class="txt"><div class="np"><i></i><i></i><i></i><span>NOW PLAYING</span></div>
+      <div class="t"></div><div class="a"></div></div></div>
   </div>
   <div id="right">
     <div id="weather"><div id="temp"></div><div id="sky-text"></div><div id="hilo"></div><div id="suntime"></div></div>
@@ -391,6 +407,20 @@ function drift(now) {
   $('right').style.transform = `translate(${-x}vw, ${y}vh)`;
 }
 
+function drawMusic() {
+  const m = state.music, box = $('music');
+  const key = JSON.stringify(m || null);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.classList.toggle('on', !!m);
+  $('recent').style.display = m ? 'none' : '';
+  if (!m) return;
+  const img = box.querySelector('img');
+  if (/^https:\/\//.test(m.art || '')) { img.src = m.art; img.style.visibility = 'visible'; } else img.style.visibility = 'hidden';
+  box.querySelector('.t').textContent = m.track || '';
+  box.querySelector('.a').textContent = m.artist || '';
+}
+
 function drawRecent() {
   const r = state.recent || [];
   const box = $('recent');
@@ -435,7 +465,7 @@ function onMessage(event) {
     const tilesChanged = JSON.stringify(msg.tiles) !== JSON.stringify(state.tiles);
     state = { ...state, ...msg };
     if (tilesChanged) drawTiles(); else drawFocus();
-    drawWeather(); drawScores(); drawCalendar(); drawAlerts(); drawFx(); drawRecent(); tick();
+    drawWeather(); drawScores(); drawCalendar(); drawAlerts(); drawFx(); drawRecent(); drawMusic(); tick();
     setTimeout(() => document.body.classList.add('settled'), 100);
   } else if (msg.type === 'focus') {
     state.focus = msg.focus;
