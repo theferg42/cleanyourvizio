@@ -6,61 +6,127 @@
 <title>CleanYourVizio</title>
 <!--
   Cast receiver for the CleanYourVizio home screen. It holds no data of its own: the sender on the
-  home network pushes tiles, focus and weather over the urn:x-cast:com.cleanyourvizio.home channel.
+  home network pushes tiles, focus, weather, scores, recently watched, sun times and the art over the
+  urn:x-cast:com.cleanyourvizio.home channel. Motion is transform/opacity only (low-end TV chip).
 -->
 <script src="https://www.gstatic.com/cast/sdk/libs/caf_receiver/v3/cast_receiver_framework.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link href="https://fonts.googleapis.com/css2?family=Outfit:wght@100;200;300;400;500&display=swap" rel="stylesheet">
 <style>
-  :root { --glow: 90, 70, 200; }
+  :root { --glow: 90, 70, 200; --sky: 0, 0, 0; --sky-a: 0; --night: 0; }
   * { box-sizing: border-box; margin: 0; padding: 0; }
   html, body { width: 100%; height: 100%; overflow: hidden; background: #000; color: #fff;
     font-family: Outfit, system-ui, sans-serif; cursor: none; }
-  #glow { position: absolute; inset: -20%; pointer-events: none;
-    background: radial-gradient(ellipse 45% 40% at 62% 72%, rgba(var(--glow), .55), transparent 70%);
+
+  /* Art: two slides crossfade; the active one drifts slowly (Ken Burns). */
+  .slide { position: absolute; inset: 0; opacity: 0; transition: opacity 2.5s ease; overflow: hidden; }
+  .slide.on { opacity: 1; }
+  .slide .img { position: absolute; inset: -4%; background: #000 center / cover no-repeat; will-change: transform; }
+  .slide .img.fit { background-size: contain; inset: 4% 4% 26% 38%; }
+  .slide.on .img { animation: drift var(--dur, 240s) linear forwards; }
+  @keyframes drift { from { transform: scale(1.02) translate(0, 0); }
+                     to { transform: scale(1.12) translate(var(--dx, -2%), var(--dy, -1%)); } }
+
+  #sky { position: absolute; inset: 0; background: rgba(var(--sky), var(--sky-a)); transition: background 60s linear; }
+  #scrim { position: absolute; inset: 0;
+    background: linear-gradient(90deg, rgba(0,0,0,.72) 0%, rgba(0,0,0,.35) 38%, rgba(0,0,0,0) 60%),
+                linear-gradient(0deg, rgba(0,0,0,.85) 0%, rgba(0,0,0,.35) 32%, rgba(0,0,0,0) 50%),
+                linear-gradient(180deg, rgba(0,0,0,.45) 0%, rgba(0,0,0,0) 22%); }
+  #glow { position: absolute; inset: -20%; pointer-events: none; opacity: .55;
+    background: radial-gradient(ellipse 40% 30% at 30% 92%, rgba(var(--glow), .7), transparent 70%);
     transition: background 1.2s ease; }
-  #top { position: absolute; left: 7.3vw; top: 9vh; }
-  #greeting { font-weight: 300; font-size: 2.9vw; color: #c8c8cd; }
-  #clock { font-weight: 100; font-size: 13vw; line-height: 1; margin-left: -.4vw; letter-spacing: -.2vw; }
-  #date { font-weight: 300; font-size: 2.6vw; color: #dcdce1; margin-top: .6vh; }
-  #weather { position: absolute; right: 7.3vw; top: 10vh; text-align: right; }
-  #temp { font-weight: 200; font-size: 6vw; line-height: 1; }
-  #sky { font-weight: 400; font-size: 1.9vw; color: #e1e1e6; margin-top: .8vh; }
-  #hilo { font-weight: 300; font-size: 1.5vw; color: #a0a0a8; margin-top: .4vh; }
-  #name { position: absolute; left: 7.3vw; bottom: 30vh; font-weight: 300; font-size: 3.4vw;
-    text-shadow: 0 0 2.4vw rgba(var(--glow), .9); transition: opacity .25s; }
-  #band { position: absolute; left: 5.2vw; right: 5.2vw; bottom: 7vh; height: 20vh;
-    background: rgba(255,255,255,.06); border-radius: 2.2vw; }
-  #dock { position: absolute; left: 7.3vw; right: 7.3vw; bottom: 9.5vh; height: 15vh;
-    display: flex; gap: 1.6vw; }
-  .tile { flex: 1; border-radius: 1.2vw; overflow: hidden; position: relative;
+
+  #ui { position: absolute; inset: 0; }
+  #top { position: absolute; left: 6.5vw; top: 7.5vh; text-shadow: 0 .2vw 1.5vw rgba(0,0,0,.5); }
+  #greeting { font-weight: 300; font-size: 2.5vw; color: #d6d6db; }
+  #clock { font-weight: 100; font-size: 11vw; line-height: 1; margin-left: -.35vw; letter-spacing: -.2vw; }
+  #date { font-weight: 300; font-size: 2.2vw; color: #e4e4e8; margin-top: .4vh; }
+  #recent { font-weight: 300; font-size: 1.35vw; color: #b9b9c0; margin-top: 1.6vh; min-height: 1.8vw; }
+  #recent b { font-weight: 400; color: #ececf0; }
+
+  #right { position: absolute; right: 6.5vw; top: 7.5vh; width: 24vw; display: flex; flex-direction: column;
+    align-items: flex-end; gap: 1.6vh; }
+  #weather { text-align: right; text-shadow: 0 .2vw 1.5vw rgba(0,0,0,.5); }
+  #temp { font-weight: 200; font-size: 5.2vw; line-height: 1; }
+  #sky-text { font-weight: 400; font-size: 1.6vw; color: #e8e8ec; margin-top: .6vh; }
+  #hilo { font-weight: 300; font-size: 1.25vw; color: #b4b4bc; margin-top: .2vh; }
+  .card { width: 100%; background: linear-gradient(135deg, rgba(28,28,36,.82), rgba(14,14,20,.72));
+    border: 1px solid rgba(255,255,255,.09); border-radius: 1.2vw; padding: 1.2vw 1.4vw;
+    opacity: 0; transform: translateY(1vh); animation: rise .6s ease forwards; }
+  @keyframes rise { to { opacity: 1; transform: none; } }
+  .score .row { display: flex; align-items: center; gap: .9vw; font-size: 1.7vw; font-weight: 300; }
+  .score .row + .row { margin-top: .6vh; }
+  .score img { width: 2.2vw; height: 2.2vw; object-fit: contain; }
+  .score .abbr { flex: 1; }
+  .score .ours .abbr, .score .ours .pts { font-weight: 500; }
+  .score .pts { font-variant-numeric: tabular-nums; }
+  .score .meta { display: flex; justify-content: space-between; margin-top: .8vh; font-size: 1.05vw; color: #a8a8b0; }
+  .live { color: #ff5a5a; font-weight: 500; letter-spacing: .08vw; }
+  .live::before { content: ''; display: inline-block; width: .55vw; height: .55vw; border-radius: 50%;
+    background: #ff3b3b; margin-right: .45vw; vertical-align: .1vw; animation: pulse 1.6s ease-in-out infinite; }
+  @keyframes pulse { 50% { opacity: .25; } }
+
+  #caption { position: absolute; right: 6.5vw; bottom: 29vh; text-align: right; max-width: 40vw;
+    text-shadow: 0 .15vw 1vw rgba(0,0,0,.7); transition: opacity 1.5s ease; }
+  #caption .t { font-size: 1.35vw; font-weight: 400; font-style: italic; color: #ececf0; }
+  #caption .b { font-size: 1.1vw; font-weight: 300; color: #b8b8c0; margin-top: .3vh; }
+  #caption .c { font-size: .85vw; font-weight: 300; color: #85858e; margin-top: .3vh; }
+
+  #name { position: absolute; left: 6.5vw; bottom: 28vh; font-weight: 300; font-size: 3vw;
+    text-shadow: 0 0 2.2vw rgba(var(--glow), .9), 0 .2vw 1vw rgba(0,0,0,.6); }
+  #band { position: absolute; left: 4.6vw; right: 4.6vw; bottom: 6vh; height: 19vh;
+    background: rgba(18,18,24,.55); border: 1px solid rgba(255,255,255,.07); border-radius: 2vw; }
+  #dock { position: absolute; left: 6.5vw; right: 6.5vw; bottom: 8.5vh; height: 14vh; display: flex; gap: 1.4vw; }
+  .tile { flex: 1; border-radius: 1.1vw; overflow: hidden; position: relative;
     background: #1b1c22 center / contain no-repeat; transition: transform .35s cubic-bezier(.2,.9,.3,1.2);
-    display: flex; align-items: center; justify-content: center; font-size: 1.8vw; font-weight: 400; }
+    display: flex; align-items: center; justify-content: center; font-size: 1.6vw; font-weight: 400;
+    box-shadow: 0 .6vw 1.6vw rgba(0,0,0,.45); }
   .tile.focus { transform: scale(1.08); }
-  #hl { position: absolute; bottom: 9.5vh; height: 15vh; border-radius: 1.4vw; pointer-events: none;
-    background: rgba(255,255,255,.12); box-shadow: 0 0 0 .25vw rgba(255,255,255,.55), 0 1vw 3vw rgba(0,0,0,.6);
-    transition: left .45s cubic-bezier(.2,.9,.3,1.15), width .45s, transform .35s cubic-bezier(.2,.9,.3,1.2);
-    transform: scale(1.08); }
-  #hint { position: absolute; right: 7.3vw; bottom: 2.2vh; font-size: 1vw; color: #55555c; font-weight: 300; }
+  #hl { position: absolute; bottom: 8.5vh; height: 14vh; border-radius: 1.3vw; pointer-events: none;
+    background: rgba(255,255,255,.1); box-shadow: 0 0 0 .22vw rgba(255,255,255,.6), 0 1vw 3vw rgba(0,0,0,.6);
+    transition: left .45s cubic-bezier(.2,.9,.3,1.15), width .45s; transform: scale(1.08); }
+  #night { position: absolute; inset: 0; background: #000; opacity: var(--night); pointer-events: none;
+    transition: opacity 60s linear; }
 </style>
 </head>
 <body>
+<div class="slide" id="s0"><div class="img"></div></div>
+<div class="slide" id="s1"><div class="img"></div></div>
+<div id="sky"></div>
+<div id="scrim"></div>
 <div id="glow"></div>
-<div id="top">
-  <div id="greeting"></div>
-  <div id="clock"></div>
-  <div id="date"></div>
+<div id="ui">
+  <div id="top">
+    <div id="greeting"></div>
+    <div id="clock"></div>
+    <div id="date"></div>
+    <div id="recent"></div>
+  </div>
+  <div id="right">
+    <div id="weather"><div id="temp"></div><div id="sky-text"></div><div id="hilo"></div></div>
+    <div id="scores"></div>
+  </div>
+  <div id="caption"><div class="t"></div><div class="b"></div><div class="c"></div></div>
+  <div id="name"></div>
+  <div id="band"></div>
+  <div id="dock"></div>
+  <div id="hl"></div>
 </div>
-<div id="weather"><div id="temp"></div><div id="sky"></div><div id="hilo"></div></div>
-<div id="name"></div>
-<div id="band"></div>
-<div id="dock"></div>
-<div id="hl"></div>
-<div id="hint">Use your phone remote · Vizio Home button leaves</div>
+<div id="night"></div>
 <script>
 const NS = 'urn:x-cast:com.cleanyourvizio.home';
 const $ = id => document.getElementById(id);
-let state = { tiles: [], focus: 0, weather: null };
+const root = document.documentElement.style;
+let state = { tiles: [], focus: 0, weather: null, scores: [], recent: [], sun: null };
+let front = 0;
+const photoParts = {};
+
+function el(tag, cls, text) {
+  const e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text != null) e.textContent = text;
+  return e;
+}
 
 function tick() {
   const now = new Date();
@@ -68,14 +134,31 @@ function tick() {
   $('greeting').textContent = h >= 5 && h < 12 ? 'Good morning' : h >= 5 && h < 17 ? 'Good afternoon' : 'Good evening';
   $('clock').textContent = now.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' }).replace(/\s?[AP]M/, '');
   $('date').textContent = now.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+  drawSky(now);
+}
+
+// Sky tint from real sunrise/sunset: warm around both, clear by day, deep blue at night, dim after 11 PM.
+function drawSky(now) {
+  const s = state.sun;
+  let tint = [10, 14, 40], a = .28;
+  if (s) {
+    const t = now.getTime(), rise = new Date(s.sunrise).getTime(), set = new Date(s.sunset).getTime();
+    const hr = 3600e3, near = (x) => Math.abs(t - x) < hr;
+    if (near(rise)) { tint = [255, 140, 90]; a = .16; }
+    else if (near(set)) { tint = [255, 105, 80]; a = .2; }
+    else if (t > rise && t < set) { tint = [0, 0, 0]; a = 0; }
+  }
+  root.setProperty('--sky', tint.join(','));
+  root.setProperty('--sky-a', a);
+  const h = now.getHours();
+  root.setProperty('--night', h >= 23 || h < 6 ? .45 : 0);
 }
 
 function drawTiles() {
   const dock = $('dock');
   dock.textContent = '';
   state.tiles.forEach((t, i) => {
-    const d = document.createElement('div');
-    d.className = 'tile' + (i === state.focus ? ' focus' : '');
+    const d = el('div', 'tile' + (i === state.focus ? ' focus' : ''));
     if (t.icon) d.style.backgroundImage = `url("${encodeURI(t.icon)}")`;
     else d.textContent = t.label;
     dock.appendChild(d);
@@ -85,16 +168,15 @@ function drawTiles() {
 
 function drawFocus() {
   const tiles = $('dock').children;
-  [...tiles].forEach((el, i) => el.classList.toggle('focus', i === state.focus));
-  const el = tiles[state.focus];
-  if (!el) return;
-  const hl = $('hl');
-  hl.style.left = el.offsetLeft + $('dock').offsetLeft + 'px';
-  hl.style.width = el.offsetWidth + 'px';
+  [...tiles].forEach((e, i) => e.classList.toggle('focus', i === state.focus));
+  const e = tiles[state.focus];
+  if (!e) return;
+  $('hl').style.left = e.offsetLeft + $('dock').offsetLeft + 'px';
+  $('hl').style.width = e.offsetWidth + 'px';
   const t = state.tiles[state.focus];
   $('name').textContent = t.label;
   if (Array.isArray(t.glow) && t.glow.length === 3)
-    document.documentElement.style.setProperty('--glow', t.glow.map(n => Math.max(0, Math.min(255, n | 0))).join(','));
+    root.setProperty('--glow', t.glow.map(n => Math.max(0, Math.min(255, n | 0))).join(','));
 }
 
 function drawWeather() {
@@ -102,8 +184,69 @@ function drawWeather() {
   $('weather').style.visibility = w ? 'visible' : 'hidden';
   if (!w) return;
   $('temp').textContent = `${w.temp}°`;
-  $('sky').textContent = w.sky;
+  $('sky-text').textContent = w.sky;
   $('hilo').textContent = `H ${w.hi}°  L ${w.lo}°  ·  ${w.place}`;
+}
+
+function drawScores() {
+  const box = $('scores');
+  const key = JSON.stringify(state.scores);
+  if (box.dataset.key === key) return;
+  box.dataset.key = key;
+  box.textContent = '';
+  (state.scores || []).forEach(g => {
+    const card = el('div', 'card score');
+    g.sides.forEach(s => {
+      const row = el('div', 'row' + (s.ours ? ' ours' : ''));
+      if (s.logo) { const img = el('img'); img.src = s.logo; img.alt = ''; row.appendChild(img); }
+      row.appendChild(el('span', 'abbr', s.abbr));
+      if (s.score != null) row.appendChild(el('span', 'pts', s.score));
+      card.appendChild(row);
+    });
+    const meta = el('div', 'meta');
+    meta.appendChild(el('span', g.state === 'in' ? 'live' : '', g.state === 'in' ? 'LIVE' : g.state === 'post' ? 'FINAL' : 'UP NEXT'));
+    meta.appendChild(el('span', '', g.state === 'post' ? '' : g.detail));
+    card.appendChild(meta);
+    box.appendChild(card);
+  });
+}
+
+function drawRecent() {
+  const r = state.recent || [];
+  const box = $('recent');
+  box.textContent = '';
+  if (!r.length) return;
+  box.appendChild(document.createTextNode('Jump back in  '));
+  r.forEach((x, i) => {
+    if (i) box.appendChild(document.createTextNode('  ·  '));
+    box.appendChild(el('b', '', x.name));
+    box.appendChild(document.createTextNode(' ' + x.ago));
+  });
+}
+
+// Preload, then crossfade to the other slide with a random drift direction.
+function showArt(src, meta) {
+  const img = new Image();
+  img.onload = () => {
+    front = 1 - front;
+    const slide = $('s' + front), pic = slide.firstElementChild;
+    pic.classList.toggle('fit', img.naturalWidth < img.naturalHeight * 1.15);
+    pic.style.backgroundImage = `url("${src}")`;
+    pic.style.setProperty('--dx', (Math.random() * 6 - 3).toFixed(2) + '%');
+    pic.style.setProperty('--dy', (Math.random() * 4 - 2).toFixed(2) + '%');
+    pic.style.animation = 'none'; void pic.offsetWidth; pic.style.animation = '';
+    slide.classList.add('on');
+    $('s' + (1 - front)).classList.remove('on');
+    const cap = $('caption');
+    cap.style.opacity = 0;
+    setTimeout(() => {
+      cap.querySelector('.t').textContent = meta.title || '';
+      cap.querySelector('.b').textContent = [meta.by, meta.date].filter(Boolean).join(', ');
+      cap.querySelector('.c').textContent = meta.credit || '';
+      cap.style.opacity = meta.title ? 1 : 0;
+    }, 1500);
+  };
+  img.src = src;
 }
 
 function onMessage(event) {
@@ -112,10 +255,20 @@ function onMessage(event) {
     const tilesChanged = JSON.stringify(msg.tiles) !== JSON.stringify(state.tiles);
     state = { ...state, ...msg };
     if (tilesChanged) drawTiles(); else drawFocus();
-    drawWeather();
+    drawWeather(); drawScores(); drawRecent(); tick();
   } else if (msg.type === 'focus') {
     state.focus = msg.focus;
     drawFocus();
+  } else if (msg.type === 'art' && /^https:\/\//.test(msg.src)) {
+    showArt(msg.src, msg);
+  } else if (msg.type === 'photo') {
+    // A local photo arrives in base64 pieces (Cast messages max out at 64 KB).
+    const p = photoParts[msg.id] = photoParts[msg.id] || [];
+    p[msg.i] = msg.data;
+    if (p.filter(Boolean).length === msg.n) {
+      showArt('data:image/jpeg;base64,' + p.join(''), {});
+      delete photoParts[msg.id];
+    }
   }
 }
 
