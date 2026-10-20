@@ -1,0 +1,46 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>CleanYourVizio</title>
+<meta name="description" content="Cast a clean, Apple TV-style home screen to a TV with Chromecast built-in.">
+<script src="https://www.gstatic.com/cv/js/sender/v1/cast_sender.js?loadCastFramework=1"></script>
+<style>
+  :root { --bg: #f6f6f8; --fg: #111; --muted: #666; --card: #fff; }
+  @media (prefers-color-scheme: dark) { :root { --bg: #000; --fg: #f2f2f5; --muted: #9a9aa3; --card: #16161b; } }
+  body { margin: 0; background: var(--bg); color: var(--fg); font: 17px/1.5 system-ui, -apple-system, sans-serif;
+    display: flex; min-height: 100vh; align-items: center; justify-content: center; padding: 16px; box-sizing: border-box; }
+  main { max-width: 520px; background: var(--card); border-radius: 20px; padding: 32px; }
+  h1 { font-weight: 300; margin: 0 0 8px; }
+  p { color: var(--muted); }
+  google-cast-launcher { display: inline-block; width: 44px; height: 44px; cursor: pointer; --connected-color: #4b8bf5; }
+  .row { display: flex; align-items: center; gap: 14px; margin-top: 20px; }
+  #status { color: var(--muted); font-size: 15px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>CleanYourVizio</h1>
+  <p>A clean, ad-free home screen for a TV with Chromecast built-in: a clock, the weather and a dock
+     of your apps. Press the Cast button and pick your TV.</p>
+  <div class="row"><google-cast-launcher></google-cast-launcher><span id="status">Looking for TVs…</span></div>
+  <p style="font-size:14px">The screen shows no personal data unless a controller on your home network sends it.
+     <a href="https://github.com/theferg42/cleanyourvizio">Source</a></p>
+</main>
+<script>
+window.__onGCastApiAvailable = ok => {
+  const status = document.getElementById('status');
+  if (!ok) { status.textContent = 'Casting needs Chrome or Edge.'; return; }
+  const ctx = cast.framework.CastContext.getInstance();
+  ctx.setOptions({ receiverApplicationId: 'FD2BA8B0', autoJoinPolicy: chrome.cast.AutoJoinPolicy.ORIGIN_SCOPED });
+  const show = () => {
+    const s = ctx.getCastState();
+    status.textContent = s === 'CONNECTED' ? 'Showing on your TV.' : s === 'NO_DEVICES_AVAILABLE' ? 'No TVs found on this network.' : 'Ready to cast.';
+  };
+  ctx.addEventListener(cast.framework.CastContextEventType.CAST_STATE_CHANGED, show);
+  show();
+};
+</script>
+</body>
+</html>
